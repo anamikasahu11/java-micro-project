@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Signal Desk</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- ================= SIDEBAR ================= -->
+
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div class="brand-icon">S</div>
+
+            <div>
+                <h1>Signal Desk</h1>
+                <span>Keep your systems calm</span>
+            </div>
+        </div>
+
+        <div class="sidebar-label">WORKSPACE</div>
+
+        <nav>
+
+            <button class="nav-item active"
+                    onclick="showPage('dashboard')"
+                    id="nav-dashboard">
+                <span>[ ]</span>
+                Overview
+            </button>
+
+            <button class="nav-item"
+                    onclick="showPage('incidents')"
+                    id="nav-incidents">
+                <span>!</span>
+                Open incidents
+            </button>
+
+            <button class="nav-item"
+                    onclick="showPage('analyze')"
+                    id="nav-analyze">
+                <span>~</span>
+                Review logs
+            </button>
+
+            <button class="nav-item"
+                    onclick="showPage('history')"
+                    id="nav-history">
+                <span>o</span>
+                Past investigations
+            </button>
+
+        </nav>
+
+        <div class="sidebar-bottom">
+
+            <div class="system-status">
+                <span class="status-dot"></span>
+
+                <div>
+                    <strong>All systems healthy</strong>
+                    <small>Ready when you need a hand</small>
+                </div>
+            </div>
+
+        </div>
+
+    </aside>
+
+    <!-- ================= MAIN ================= -->
+
+    <main class="main">
+
+        <!-- ================= TOP BAR ================= -->
+
+        <header class="topbar">
+
+            <div>
+                <h2 id="page-title">Dashboard</h2>
+                <p id="page-subtitle">
+                    A calm view of what needs your attention
+                </p>
+            </div>
+
+            <button class="analyze-button"
+                    onclick="showPage('analyze')">
+
+                <span>+</span>
+                Review some logs
+
+            </button>
+
+        </header>
+
+        <!-- ========================================================= -->
+        <!-- DASHBOARD -->
+        <!-- ========================================================= -->
+
+        <section id="dashboard-page" class="page">
+
+            <div class="stats-grid">
+
+                <div class="stat-card">
+
+                    <div class="stat-label">
+                        ACTIVE INCIDENTS
+                    </div>
+
+                    <div class="stat-value"
+                         id="active-count">
+                        0
+                    </div>
+
+                    <div class="stat-footer">
+                        Being looked into now
+                    </div>
+
+                </div>
+
+                <div class="stat-card critical">
+
+                    <div class="stat-label">
+                        CRITICAL
+                    </div>
+
+                    <div class="stat-value"
+                         id="critical-count">
+                        0
+                    </div>
+
+                    <div class="stat-footer">
+                        Worth checking first
+                    </div>
+
+                </div>
+
+                <div class="stat-card investigating">
+
+                    <div class="stat-label">
+                        INVESTIGATING
+                    </div>
+
+                    <div class="stat-value"
+                         id="investigating-count">
+                        0
+                    </div>
+
+                    <div class="stat-footer">
+                        Your team is on it
+                    </div>
+
+                </div>
+
+                <div class="stat-card resolved">
+
+                    <div class="stat-label">
+                        RESOLVED
+                    </div>
+
+                    <div class="stat-value"
+                         id="resolved-count">
+                        0
+                    </div>
+
+                    <div class="stat-footer">
+                        Closed and documented
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="section-header">
+
+                <div>
+                    <h3>Open incidents</h3>
+
+                    <p>
+                        The latest signals from your services
+                    </p>
+                </div>
+
+                <button class="text-button"
+                        onclick="showPage('incidents')">
+
+                    View all -&gt;
+
+                </button>
+
+            </div>
+
+            <div id="dashboard-incidents"
+                 class="incident-grid">
+            </div>
+
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- INCIDENTS -->
+        <!-- ========================================================= -->
+
+        <section id="incidents-page"
+                 class="page hidden">
+
+            <div class="section-header">
+
+                <div>
+                    <h3>Incidents</h3>
+
+                    <p>
+                        All detected application incidents
+                    </p>
+                </div>
+
+                <button class="analyze-button"
+                        onclick="showPage('analyze')">
+
+                    + New Investigation
+
+                </button>
+
+            </div>
+
+            <div id="all-incidents"
+                 class="incident-grid">
+            </div>
+
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- ANALYZE -->
+        <!-- ========================================================= -->
+
+        <section id="analyze-page"
+                 class="page hidden">
+
+            <div class="analyze-layout">
+
+                <div class="analyze-main">
+
+                    <div class="panel">
+
+                        <div class="panel-header">
+
+                            <div>
+                                <h3>Let's make sense of your logs</h3>
+
+                                <p>
+                                    Paste logs or upload a .log file
+                                    to start an investigation.
+                                </p>
+                            </div>
+
+                        </div>
+
+                        <textarea
+                            id="log-input"
+                            placeholder="[10:31:42] [RDS] Connection timeout while connecting to database
+[10:31:44] [RDS] Connection pool exhausted
+[10:31:47] [Order-Service] API response time exceeded 5000ms
+[10:31:52] [Order-Service] Database connection failed
+[10:31:56] [API-Gateway] Upstream service timeout
+[10:32:01] [Monitoring] Order Service health check failed"></textarea>
+
+                        <div class="input-actions">
+
+                            <label class="upload-button">
+
+                                Upload .log
+
+                                <input
+                                    type="file"
+                                    id="log-file"
+                                    accept=".log,.txt"
+                                    onchange="handleFileUpload(event)">
+
+                            </label>
+
+                            <button class="secondary-button"
+                                    onclick="loadSampleLogs()">
+
+                                Load Sample
+
+                            </button>
+
+                            <button class="secondary-button"
+                                    onclick="clearLogs()">
+
+                                Clear
+
+                            </button>
+
+                        </div>
+
+                        <button class="primary-analyze"
+                                onclick="analyzeLogs()">
+
+                            <span>*</span>
+
+                            Review logs
+
+                        </button>
+
+                    </div>
+
+                    <div id="analysis-progress"
+                         class="panel progress-panel hidden">
+
+                        <div class="panel-header">
+
+                            <div>
+
+                                <h3>Working through the logs</h3>
+
+                                <p>
+                                    Processing the submitted logs
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                        <div class="progress-step"
+                             id="step-1">
+
+                            <div class="step-icon">
+                                1
+                            </div>
+
+                            <div>
+                                <strong>Parsing logs</strong>
+                                <small>
+                                    Extracting timestamps,
+                                    services and messages
+                                </small>
+                            </div>
+
+                        </div>
+
+                        <div class="progress-step"
+                             id="step-2">
+
+                            <div class="step-icon">
+                                2
+                            </div>
+
+                            <div>
+                                <strong>Building timeline</strong>
+                                <small>
+                                    Reconstructing incident sequence
+                                </small>
+                            </div>
+
+                        </div>
+
+                        <div class="progress-step"
+                             id="step-3">
+
+                            <div class="step-icon">
+                                3
+                            </div>
+
+                            <div>
+                                <strong>Analyzing root cause</strong>
+                                <small>
+                                    Detecting probable failure
+                                </small>
+                            </div>
+
+                        </div>
+
+                        <div class="progress-step"
+                             id="step-4">
+
+                            <div class="step-icon">
+                                4
+                            </div>
+
+                            <div>
+                                <strong>Generating recommendations</strong>
+                                <small>
+                                    Preparing remediation actions
+                                </small>
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div class="analyze-side">
+
+                    <div class="panel">
+
+                        <div class="panel-header">
+
+                            <div>
+                                <h3>What happens next</h3>
+                            </div>
+
+                        </div>
+
+                        <div class="how-step">
+
+                            <div class="how-number">
+                                01
+                            </div>
+
+                            <div>
+                                <strong>Parse</strong>
+
+                                <p>
+                                    Log entries are extracted and
+                                    normalized.
+                                </p>
+                            </div>
+
+                        </div>
+
+                        <div class="how-step">
+
+                            <div class="how-number">
+                                02
+                            </div>
+
+                            <div>
+                                <strong>Correlate</strong>
+
+                                <p>
+                                    Related errors and services
+                                    are connected.
+                                </p>
+                            </div>
+
+                        </div>
+
+                        <div class="how-step">
+
+                            <div class="how-number">
+                                03
+                            </div>
+
+                            <div>
+                                <strong>Analyze</strong>
+
+                                <p>
+                                    The investigation engine determines
+                                    the probable root cause.
+                                </p>
+                            </div>
+
+                        </div>
+
+                        <div class="how-step">
+
+                            <div class="how-number">
+                                04
+                            </div>
+
+                            <div>
+                                <strong>Recommend</strong>
+
+                                <p>
+                                    Suggested remediation actions
+                                    are generated.
+                                </p>
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- HISTORY -->
+        <!-- ========================================================= -->
+
+        <section id="history-page"
+                 class="page hidden">
+
+            <div class="section-header">
+
+                <div>
+                    <h3>Incident History</h3>
+
+                    <p>
+                        Previously investigated incidents
+                    </p>
+                </div>
+
+            </div>
+
+            <div class="panel table-panel">
+
+                <table>
+
+                    <thead>
+
+                    <tr>
+
+                        <th>ID</th>
+
+                        <th>Incident</th>
+
+                        <th>Severity</th>
+
+                        <th>Root Cause</th>
+
+                        <th>Status</th>
+
+                        <th>Created</th>
+
+                        <th></th>
+
+                    </tr>
+
+                    </thead>
+
+                    <tbody id="history-table">
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- INVESTIGATION -->
+        <!-- ========================================================= -->
+
+        <section id="incident-page"
+                 class="page hidden">
+
+            <div id="incident-detail">
+            </div>
+
+        </section>
+
+    </main>
+
+</div>
+
+<script src="script.js"></script>
+
+</body>
+</html>
