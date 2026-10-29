@@ -58,6 +58,13 @@
                 Past investigations
             </button>
 
+            <button class="nav-item"
+                    onclick="showPage('os-lab')"
+                    id="nav-os-lab">
+                <span>CPU</span>
+                OS Lab
+            </button>
+
         </nav>
 
         <div class="sidebar-bottom">
@@ -538,6 +545,93 @@
 
             </div>
 
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- OS LAB -->
+        <!-- ========================================================= -->
+
+        <section id="os-lab-page"
+                 class="page hidden">
+
+            <div class="section-header">
+                <div>
+                    <h3>CPU Scheduling Simulator</h3>
+                    <p>Simulate process execution, visualize scheduling order, and compare CPU scheduling performance.</p>
+                </div>
+            </div>
+
+            <div class="os-lab-grid">
+                <div class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <h3>Process input</h3>
+                            <p>Enter non-negative arrival times, positive burst times, and integer priorities.</p>
+                        </div>
+                    </div>
+                    <div id="os-error" class="os-message hidden" role="alert"></div>
+                    <div class="os-controls">
+                        <label>Algorithm
+                            <select id="os-algorithm" onchange="toggleQuantum()">
+                                <option value="FCFS">FCFS</option>
+                                <option value="SJF">SJF (Non-preemptive)</option>
+                                <option value="PRIORITY">Priority (Non-preemptive)</option>
+                                <option value="ROUND_ROBIN">Round Robin</option>
+                            </select>
+                        </label>
+                        <label id="quantum-wrap">Time quantum
+                            <input id="os-quantum" type="number" min="1" value="2">
+                        </label>
+                    </div>
+                    <div class="os-table-wrap">
+                        <table class="os-input-table">
+                            <thead><tr><th>PID</th><th>Arrival</th><th>Burst</th><th>Priority</th><th></th></tr></thead>
+                            <tbody id="os-processes"></tbody>
+                        </table>
+                    </div>
+                    <div class="input-actions">
+                        <button class="secondary-button" onclick="addOsProcess()">Add process</button>
+                        <button class="secondary-button" onclick="loadOsSample(false)">Load sample</button>
+                        <button class="secondary-button" onclick="loadOsSample(true)">Idle sample</button>
+                        <button class="secondary-button" onclick="clearOsProcesses()">Clear all</button>
+                    </div>
+                    <button class="primary-analyze" onclick="runOsSimulation()">Run simulation</button>
+                    <p class="os-help">Priority convention: a smaller number means higher priority. Round Robin uses the same quantum for simulation and comparison.</p>
+                </div>
+
+                <div class="panel os-education">
+                    <div class="panel-header"><div><h3>Scheduling concepts</h3><p>Useful formulas for your practical.</p></div></div>
+                    <p><strong>Turnaround time (TAT)</strong> = Completion time - Arrival time</p>
+                    <p><strong>Waiting time (WT)</strong> = Turnaround time - Burst time</p>
+                    <p><strong>Response time (RT)</strong> = First CPU start - Arrival time</p>
+                    <p>FCFS, SJF, and Priority are non-preemptive. Round Robin is preemptive and shares CPU time using a quantum.</p>
+                </div>
+            </div>
+
+            <div id="os-results" class="hidden">
+                <div class="os-summary-grid" id="os-summary"></div>
+                <div class="panel">
+                    <div class="panel-header"><div><h3>Gantt chart</h3><p>Execution segments are proportional to their duration; IDLE shows unused CPU time.</p></div></div>
+                    <div id="os-gantt" class="gantt-chart"></div>
+                </div>
+                <div class="panel table-panel">
+                    <div class="panel-header"><div><h3>Process metrics</h3><p>Calculated for the selected algorithm.</p></div></div>
+                    <div class="os-table-wrap"><table><thead><tr><th>PID</th><th>AT</th><th>BT</th><th>Priority</th><th>CT</th><th>TAT</th><th>WT</th><th>RT</th></tr></thead><tbody id="os-metrics"></tbody></table></div>
+                </div>
+                <div class="panel table-panel">
+                    <div class="panel-header"><div><h3>Algorithm comparison</h3><p>Results depend on arrivals, bursts, priorities, and the time quantum; no algorithm is universally best.</p></div></div>
+                    <div class="os-table-wrap"><table><thead><tr><th>Algorithm</th><th>Avg WT</th><th>Avg TAT</th><th>Avg RT</th><th>CPU Utilization</th></tr></thead><tbody id="os-comparison"></tbody></table></div>
+                    <p id="os-explanation" class="os-explanation"></p>
+                </div>
+            </div>
+
+            <div class="panel os-documentation">
+                <div class="panel-header"><div><h3>Algorithm guide</h3><p>Definitions, trade-offs, and common use cases.</p></div></div>
+                <details open><summary>FCFS — First Come, First Served</summary><p>Runs ready processes in arrival order without preemption. It is simple and fair by arrival order, but a long job can make shorter jobs wait (the convoy effect). It is useful for simple batch queues.</p></details>
+                <details><summary>SJF — Shortest Job First</summary><p>Selects the shortest burst among arrived processes and runs it to completion. It often minimizes average waiting time when burst lengths are known, but long jobs may wait and burst estimates are not always available.</p></details>
+                <details><summary>Priority Scheduling</summary><p>Selects the highest-priority ready process; this simulator uses the smaller numerical value as higher priority. It supports differentiated importance, but low-priority processes can starve without aging.</p></details>
+                <details><summary>Round Robin</summary><p>Gives each ready process a time quantum, then re-enqueues unfinished work. It improves fairness and response time for interactive workloads, but small quanta increase context-switch overhead while large quanta approach FCFS.</p></details>
+            </div>
         </section>
 
         <!-- ========================================================= -->

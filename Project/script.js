@@ -454,6 +454,7 @@ function showPage(page) {
         "incidents",
         "analyze",
         "history",
+        "os-lab",
         "incident"
 
     ];
@@ -544,6 +545,19 @@ function showPage(page) {
 
     }
 
+    if (page === "os-lab") {
+
+        setPageTitle(
+            "OS Lab",
+            "Learn how scheduling policies change CPU performance"
+        );
+
+        if (!document.querySelector("#os-processes tr")) {
+            loadOsSample(false);
+        }
+
+    }
+
     if (page === "incident") {
 
         setPageTitle(
@@ -554,6 +568,170 @@ function showPage(page) {
     }
 
 }
+
+/* =========================================================
+       CPU SCHEDULING LAB
+    ========================================================= */
+
+    const OS_SAMPLE = [
+        { pid: "P1", arrivalTime: 5, burstTime: 2, priority: 2 },
+        { pid: "P2", arrivalTime: 0, burstTime: 3, priority: 1 },
+        { pid: "P3", arrivalTime: 1, burstTime: 2, priority: 3 },
+        { pid: "P4", arrivalTime: 2, burstTime: 4, priority: 2 }
+    ];
+
+    const OS_IDLE_SAMPLE = [
+        { pid: "P1", arrivalTime: 3, burstTime: 4, priority: 2 },
+        { pid: "P2", arrivalTime: 8, burstTime: 2, priority: 1 },
+        { pid: "P3", arrivalTime: 10, burstTime: 3, priority: 3 }
+    ];
+
+    function loadOsSample(includeIdle) {
+        const processes = includeIdle ? OS_IDLE_SAMPLE : OS_SAMPLE;
+        document.getElementById("os-processes").innerHTML = "";
+        processes.forEach(function (process) {
+            addOsProcess(process);
+        });
+        document.getElementById("os-quantum").value = 2;
+        toggleQuantum();
+        clearOsMessage();
+    }
+
+    function addOsProcess(process) {
+        const value = process || { pid: "", arrivalTime: 0, burstTime: 1, priority: 1 };
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td><input class="os-pid" value="${escapeHtml(String(value.pid))}" aria-label="Process ID"></td>
+            <td><input class="os-arrival" type="number" min="0" value="${value.arrivalTime}" aria-label="Arrival time"></td>
+            <td><input class="os-burst" type="number" min="1" value="${value.burstTime}" aria-label="Burst time"></td>
+            <td><input class="os-priority" type="number" value="${value.priority}" aria-label="Priority"></td>
+            <td><button class="remove-process" type="button" onclick="this.closest('tr').remove()">Remove</button></td>`;
+        document.getElementById("os-processes").appendChild(row);
+    }
+
+    function clearOsProcesses() {
+        document.getElementById("os-processes").innerHTML = "";
+        document.getElementById("os-results").classList.add("hidden");
+        clearOsMessage();
+    }
+
+    function toggleQuantum() {
+        document.getElementById("quantum-wrap").classList.toggle(
+            "hidden",
+            document.getElementById("os-algorithm").value !== "ROUND_ROBIN"
+        );
+    }
+
+    function readOsProcesses() {
+        const rows = Array.from(document.querySelectorAll("#os-processes tr"));
+        if (!rows.length) {
+            throw new Error("Add at least one process before running a simulation.");
+        }
+        const seen = new Set();
+        return rows.map(function (row, index) {
+            const pid = row.querySelector(".os-pid").value.trim();
+            const arrivalTime = Number(row.querySelector(".os-arrival").value);
+            const burstTime = Number(row.querySelector(".os-burst").value);
+            const priority = Number(row.querySelector(".os-priority").value);
+            if (!pid) throw new Error(`Process ${index + 1}: process ID is required.`);
+            if (seen.has(pid)) throw new Error(`Process ID "${pid}" is duplicated.`);
+            if (!Number.isInteger(arrivalTime) || arrivalTime < 0) throw new Error(`${pid}: arrival time must be a non-negative integer.`);
+            if (!Number.isInteger(burstTime) || burstTime <= 0) throw new Error(`${pid}: burst time must be a positive integer.`);
+            if (!Number.isInteger(priority)) throw new Error(`${pid}: priority must be an integer.`);
+            seen.add(pid);
+            return { pid, arrivalTime, burstTime, priority };
+        });
+    }
+
+    async function runOsSimulation() {
+        try {
+            const processes = readOsProcesses();
+            const algorithm = document.getElementById("os-algorithm").value;
+            const quantum = Number(document.getElementById("os-quantum").value);
+            if (algorithm === "ROUND_ROBIN" && (!Number.isInteger(quantum) || quantum <= 0)) {
+                throw new Error("Time quantum must be a positive integer.");
+            }
+            clearOsMessage();
+            const response = await fetch(`${API_BASE_URL}/os/scheduling/run`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ algorithm, processes, timeQuantum: quantum })
+            });
+            if (!response.ok) {
+                const error = await response.json().catch(function () { return {}; });
+                throw new Error(error.error || `Scheduling request failed (${response.status}).`);
+            }
+            const result = await response.json();
+            const comparisonResponse = await fetch(`${API_BASE_URL}/os/scheduling/compare`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ processes, timeQuantum: quantum })
+            });
+            if (!comparisonResponse.ok) throw new Error("The selected simulation ran, but comparison data was unavailable.");
+            renderOsResults(result, await comparisonResponse.json());
+        } catch (error) {
+            showOsMessage(error.message || "Unable to run the simulation.");
+        }
+    }
+
+    function renderOsResults(result, comparison) {
+        document.getElementById("os-results").classList.remove("hidden");
+        const metric = result.metrics || [];
+        document.getElementById("os-summary").innerHTML = [
+            ["Processes", result.totalProcesses],
+            ["Busy time", result.totalBusyTime],
+            ["Elapsed time", result.totalElapsedTime],
+            ["CPU utilization", `${Number(result.cpuUtilization).toFixed(2)}%`],
+            ["Average WT", Number(result.averageWaitingTime).toFixed(2)],
+            ["Average TAT", Number(result.averageTurnaroundTime).toFixed(2)],
+            ["Average RT", Number(result.averageResponseTime).toFixed(2)]
+        ].map(function (item) { return `<div class="stat-card"><div class="stat-label">${item[0]}</div><div class="stat-value">${item[1]}</div></div>`; }).join("");
+        document.getElementById("os-metrics").innerHTML = metric.map(function (item) {
+            return `<tr><td>${escapeHtml(item.pid)}</td><td>${item.arrivalTime}</td><td>${item.burstTime}</td><td>${item.priority}</td><td>${item.completionTime}</td><td>${item.turnaroundTime}</td><td>${item.waitingTime}</td><td>${item.responseTime}</td></tr>`;
+        }).join("");
+        renderGantt(result.segments || []);
+        const rows = comparison.results || [];
+        const minWt = Math.min.apply(null, rows.map(function (item) { return item.averageWaitingTime; }));
+        const minTat = Math.min.apply(null, rows.map(function (item) { return item.averageTurnaroundTime; }));
+        document.getElementById("os-comparison").innerHTML = rows.map(function (item) {
+            const best = item.averageWaitingTime === minWt || item.averageTurnaroundTime === minTat;
+            return `<tr class="${best ? "best-row" : ""}"><td>${escapeHtml(item.algorithm)}</td><td>${Number(item.averageWaitingTime).toFixed(2)}${item.averageWaitingTime === minWt ? " *" : ""}</td><td>${Number(item.averageTurnaroundTime).toFixed(2)}${item.averageTurnaroundTime === minTat ? " *" : ""}</td><td>${Number(item.averageResponseTime).toFixed(2)}</td><td>${Number(item.cpuUtilization).toFixed(2)}%</td></tr>`;
+        }).join("");
+        const winners = [];
+        if (rows.length) {
+            winners.push(`Lowest average waiting time: ${rows.filter(function (item) { return item.averageWaitingTime === minWt; }).map(function (item) { return item.algorithm; }).join(", ")}.`);
+            winners.push(`Lowest average turnaround time: ${rows.filter(function (item) { return item.averageTurnaroundTime === minTat; }).map(function (item) { return item.algorithm; }).join(", ")}.`);
+            winners.push(`Round Robin produced ${result.segments.filter(function (segment) { return segment.pid !== "IDLE"; }).length} CPU execution segment(s) in the selected run.`);
+            if (result.segments.some(function (segment) { return segment.pid === "IDLE"; })) {
+                winners.push("The CPU was idle during at least one interval because no process had arrived.");
+            }
+        }
+        document.getElementById("os-explanation").textContent = winners.join(" ");
+    }
+
+    function renderGantt(segments) {
+        const chart = document.getElementById("os-gantt");
+        if (!segments.length) {
+            chart.innerHTML = "<p>No execution segments returned.</p>";
+            return;
+        }
+        const total = segments[segments.length - 1].endTime;
+        const scale = segments.map(function (segment) { return segment.startTime; }).concat([total]);
+        chart.innerHTML = `<div class="gantt-track">${segments.map(function (segment) {
+            const width = Math.max(5, (segment.duration / total) * 100);
+            return `<div class="gantt-segment ${segment.pid === "IDLE" ? "idle" : ""}" style="width:${width}%"><strong>${escapeHtml(segment.pid)}</strong><small>${segment.startTime}-${segment.endTime}</small></div>`;
+        }).join("")}</div><div class="gantt-scale">${scale.map(function (time) { return `<span>${time}</span>`; }).join("")}</div>`;
+    }
+
+    function showOsMessage(message) {
+        const element = document.getElementById("os-error");
+        element.textContent = message;
+        element.classList.remove("hidden");
+    }
+
+    function clearOsMessage() {
+        document.getElementById("os-error").classList.add("hidden");
+    }
 
 function setPageTitle(title, subtitle) {
 

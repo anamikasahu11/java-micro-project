@@ -3,6 +3,12 @@ package com.signaldesk;
 import com.signaldesk.model.Incident;
 import com.signaldesk.model.ServiceStatus;
 import com.signaldesk.model.TimelineEvent;
+import com.signaldesk.os.CpuScheduler;
+import com.signaldesk.os.ExecutionSegment;
+import com.signaldesk.os.ProcessInput;
+import com.signaldesk.os.ProcessMetrics;
+import com.signaldesk.os.SchedulingAlgorithm;
+import com.signaldesk.os.SchedulingResult;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
@@ -20,8 +26,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 
 /**
  * Zero-dependency demo server. Run with the JDK:
@@ -44,11 +50,150 @@ public final class StandaloneSignalDeskServer {
         seedIncidents();
         HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
         server.createContext("/api/incidents", StandaloneSignalDeskServer::handleIncidents);
+        server.createContext("/api/os/scheduling", StandaloneSignalDeskServer::handleScheduling);
         server.createContext("/", StandaloneSignalDeskServer::handleStaticFiles);
         server.setExecutor(Executors.newFixedThreadPool(4));
         server.start();
         System.out.println("Signal Desk Java server running at http://localhost:" + PORT);
         System.out.println("Press Ctrl+C to stop.");
+    }
+
+    private static void handleScheduling(HttpExchange exchange) throws IOException {
+        try {
+            String method = exchange.getRequestMethod();
+            String path = exchange.getRequestURI().getPath();
+            if (!"POST".equals(method)) {
+                respond(exchange, 405, "{\"error\":\"Only POST is supported\"}");
+                return;
+            }
+            String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            List<ProcessInput> processes = processInputs(requestBody);
+            int quantum = integerValue(requestBody, "timeQuantum", 2);
+            CpuScheduler scheduler = new CpuScheduler();
+            if ("/api/os/scheduling/run".equals(path)) {
+                SchedulingAlgorithm algorithm = algorithmValue(requestBody);
+                SchedulingResult result = schedule(scheduler, algorithm, processes, quantum);
+                respond(exchange, 200, schedulingJson(result, processes));
+                return;
+            }
+            if ("/api/os/scheduling/compare".equals(path)) {
+                StringBuilder results = new StringBuilder("{\"results\":[");
+                SchedulingAlgorithm[] algorithms = {
+                        SchedulingAlgorithm.FCFS, SchedulingAlgorithm.SJF,
+                        SchedulingAlgorithm.PRIORITY, SchedulingAlgorithm.ROUND_ROBIN};
+                for (int i = 0; i < algorithms.length; i++) {
+                    if (i > 0) results.append(',');
+                    results.append(schedulingJson(schedule(scheduler, algorithms[i], processes, quantum), processes));
+                }
+                respond(exchange, 200, results.append("]}").toString());
+                return;
+            }
+            respond(exchange, 404, "{\"error\":\"Scheduling route not found\"}");
+        } catch (IllegalArgumentException error) {
+            respond(exchange, 400, "{\"error\":\"" + escape(error.getMessage()) + "\"}");
+        } catch (Exception error) {
+            respond(exchange, 500, "{\"error\":\"Scheduling server error\"}");
+            error.printStackTrace();
+        }
+    }
+
+    private static SchedulingResult schedule(CpuScheduler scheduler, SchedulingAlgorithm algorithm,
+                                             List<ProcessInput> processes, int quantum) {
+        return switch (algorithm) {
+            case FCFS -> scheduler.fcfs(processes);
+            case SJF -> scheduler.sjf(processes);
+            case PRIORITY -> scheduler.priority(processes);
+            case ROUND_ROBIN -> scheduler.roundRobin(processes, quantum);
+        };
+    }
+
+    private static SchedulingAlgorithm algorithmValue(String body) {
+        String value = stringValue(body, "algorithm");
+        try {
+            return SchedulingAlgorithm.valueOf(value);
+        } catch (IllegalArgumentException error) {
+            throw new IllegalArgumentException("Unknown scheduling algorithm: " + value);
+        }
+    }
+
+    private static List<ProcessInput> processInputs(String body) {
+        int arrayStart = body.indexOf("\"processes\"");
+        int start = body.indexOf('[', arrayStart);
+        int end = body.indexOf(']', start);
+        if (arrayStart < 0 || start < 0 || end < 0) {
+            throw new IllegalArgumentException("Request must include a processes array.");
+        }
+        String array = body.substring(start + 1, end);
+        Pattern processPattern = Pattern.compile("\\{\\s*\"pid\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"arrivalTime\"\\s*:\\s*(-?\\d+)\\s*,\\s*\"burstTime\"\\s*:\\s*(-?\\d+)\\s*,\\s*\"priority\"\\s*:\\s*(-?\\d+)\\s*\\}");
+        Matcher matcher = processPattern.matcher(array);
+        List<ProcessInput> processes = new ArrayList<>();
+        while (matcher.find()) {
+            processes.add(new ProcessInput(matcher.group(1), Integer.parseInt(matcher.group(2)),
+                    Integer.parseInt(matcher.group(3)), Integer.parseInt(matcher.group(4))));
+        }
+        if (processes.isEmpty()) throw new IllegalArgumentException("At least one process is required.");
+        return processes;
+    }
+
+    private static int integerValue(String body, String key, int fallback) {
+        Matcher matcher = Pattern.compile("\"" + key + "\"\\s*:\\s*(-?\\d+)").matcher(body);
+        return matcher.find() ? Integer.parseInt(matcher.group(1)) : fallback;
+    }
+
+    private static String stringValue(String body, String key) {
+        Matcher matcher = Pattern.compile("\"" + key + "\"\\s*:\\s*\"([^\"]+)\"").matcher(body);
+        if (!matcher.find()) throw new IllegalArgumentException("Request must include " + key + ".");
+        return matcher.group(1);
+    }
+
+    private static String schedulingJson(SchedulingResult result, List<ProcessInput> input) {
+        int busy = result.segments().stream().filter(segment -> !segment.isIdle())
+                .mapToInt(ExecutionSegment::duration).sum();
+        int elapsed = result.segments().isEmpty() ? 0
+                : result.segments().get(result.segments().size() - 1).endTime();
+        double utilization = elapsed == 0 ? 0 : busy * 100.0 / elapsed;
+        StringBuilder json = new StringBuilder("{\"algorithm\":\"").append(result.algorithm())
+                .append("\",\"averageWaitingTime\":").append(result.averageWaitingTime())
+                .append(",\"averageTurnaroundTime\":").append(result.averageTurnaroundTime())
+                .append(",\"averageResponseTime\":").append(result.averageResponseTime())
+                .append(",\"totalProcesses\":").append(input.size())
+                .append(",\"totalBusyTime\":").append(busy)
+                .append(",\"totalElapsedTime\":").append(elapsed)
+                .append(",\"cpuUtilization\":").append(utilization)
+                .append(",\"segments\":").append(segmentsJson(result.segments()))
+                .append(",\"metrics\":").append(metricsJson(result, input)).append('}');
+        return json.toString();
+    }
+
+    private static String segmentsJson(List<ExecutionSegment> segments) {
+        StringBuilder json = new StringBuilder("[");
+        for (int i = 0; i < segments.size(); i++) {
+            if (i > 0) json.append(',');
+            ExecutionSegment segment = segments.get(i);
+            json.append("{\"pid\":\"").append(escape(segment.processId()))
+                    .append("\",\"startTime\":").append(segment.startTime())
+                    .append(",\"endTime\":").append(segment.endTime())
+                    .append(",\"duration\":").append(segment.duration()).append('}');
+        }
+        return json.append(']').toString();
+    }
+
+    private static String metricsJson(SchedulingResult result, List<ProcessInput> input) {
+        StringBuilder json = new StringBuilder("[");
+        for (int i = 0; i < input.size(); i++) {
+            if (i > 0) json.append(',');
+            ProcessInput process = input.get(i);
+            ProcessMetrics metric = result.metrics().get(process.id());
+            json.append("{\"pid\":\"").append(escape(process.id()))
+                    .append("\",\"arrivalTime\":").append(process.arrivalTime())
+                    .append(",\"burstTime\":").append(process.burstTime())
+                    .append(",\"priority\":").append(process.priority())
+                    .append(",\"completionTime\":").append(metric.completionTime())
+                    .append(",\"turnaroundTime\":").append(metric.turnaroundTime())
+                    .append(",\"waitingTime\":").append(metric.waitingTime())
+                    .append(",\"responseTime\":").append(metric.responseTime()).append('}');
+        }
+        return json.append(']').toString();
     }
 
     private static void handleStaticFiles(HttpExchange exchange) throws IOException {
